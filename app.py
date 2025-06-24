@@ -1,13 +1,11 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from uuid import uuid4
 from diffusers import StableDiffusion3Pipeline, BitsAndBytesConfig, SD3Transformer2DModel
 import torch
 import os
-from uuid import uuid4
-from io import BytesIO
 
 # === CONFIG ===
 API_KEY = "wildmind_5879fcd4a8b94743b3a7c8c1a1b4"
@@ -43,7 +41,7 @@ print("✅ SD 3.5 Medium ready!")
 # === FastAPI App ===
 app = FastAPI()
 
-# Enable CORS for frontend domain
+# Enable CORS for frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://www.wildmindai.com"],
@@ -52,14 +50,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve static images
+# Serve static images from local directory
 app.mount("/images", StaticFiles(directory=OUTPUT_DIR), name="images")
 
-# === Input Schema ===
+# Request body schema
 class PromptInput(BaseModel):
     prompt: str
 
-# === Generation Logic ===
+# Unified image generation logic
 async def generate_and_respond(request: Request, data: PromptInput):
     # API key check
     api_key = request.headers.get("x-api-key")
@@ -82,12 +80,12 @@ async def generate_and_respond(request: Request, data: PromptInput):
 
     return {"image_url": f"https://api.wildmindai.com/images/{filename}"}
 
-# === /generate endpoint ===
+# POST /generate
 @app.post("/generate")
 async def generate_image(request: Request, data: PromptInput):
     return await generate_and_respond(request, data)
 
-# === /medium endpoint (alias) ===
+# POST /medium (alias)
 @app.post("/medium")
 async def generate_medium(request: Request, data: PromptInput):
     return await generate_and_respond(request, data)
