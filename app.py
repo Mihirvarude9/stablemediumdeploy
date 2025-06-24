@@ -1,56 +1,51 @@
-import os
-import torch
+# app_medium.py
 from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from diffusers import StableDiffusion3Pipeline, BitsAndBytesConfig, SD3Transformer2DModel
-from uuid import uuid4
-from fastapi.responses import FileResponse
+import torch
+from io import BytesIO
+from fastapi.responses import StreamingResponse
 
-# Load model
 model_id = "stabilityai/stable-diffusion-3.5-medium"
 
+app = FastAPI()
+
+# 4-bit quantization config
 bnb_config = BitsAndBytesConfig(
     load_in_4bit=True,
     bnb_4bit_quant_type="nf4",
     bnb_4bit_compute_dtype=torch.float16
 )
 
-print("⏳ Loading transformer...")
+# Load model transformer
 transformer = SD3Transformer2DModel.from_pretrained(
     model_id,
     subfolder="transformer",
     quantization_config=bnb_config,
-    torch_dtype=torch.float16
+    torch_dtype=torch.float16,
 )
 
-print("⏳ Loading full pipeline...")
+# Load pipeline
 pipe = StableDiffusion3Pipeline.from_pretrained(
     model_id,
     transformer=transformer,
-    torch_dtype=torch.float16
-).to("cuda")
-
+    torch_dtype=torch.float16,
+)
 pipe.enable_model_cpu_offload()
 
-# FastAPI app setup
-app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Replace with your frontend domain in production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-class PromptRequest(BaseModel):
+# Input model
+class PromptInput(BaseModel):
     prompt: str
 
 @app.post("/generate")
-async def generate_image(req: PromptRequest):
-    output_path = f"/tmp/{uuid4().hex}.png"
-    print(f"🚀 Generating: {req.prompt}")
-    image = pipe(prompt=req.prompt, num_inference_steps=50, guidance_scale=5.5).images[0]
-    image.save(output_path)
-    return FileResponse(output_path, media_type="image/png", filename="generated.png")
+async def generate_image(data: PromptInput):
+    image = pipe(
+        prompt=data.prompt,
+        num_inference_steps=50,
+        guidance_scale=5.5,
+    ).images[0]
+
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    buffer.seek(0)
+    return StreamingResponse(buffer, media_type="image/png")
