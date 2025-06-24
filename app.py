@@ -6,6 +6,7 @@ from uuid import uuid4
 from diffusers import StableDiffusion3Pipeline, BitsAndBytesConfig, SD3Transformer2DModel
 import torch
 import os
+import time
 
 # === CONFIG ===
 API_KEY = "wildmind_5879fcd4a8b94743b3a7c8c1a1b4"
@@ -34,7 +35,10 @@ pipe = StableDiffusion3Pipeline.from_pretrained(
     transformer=transformer,
     torch_dtype=torch.float16,
 )
-pipe.enable_model_cpu_offload()
+
+# If you're low on VRAM, keep this. Otherwise comment it out.
+# pipe.enable_model_cpu_offload()
+
 pipe.to("cuda")
 print("✅ SD 3.5 Medium ready!")
 
@@ -68,15 +72,30 @@ async def generate_and_respond(request: Request, data: PromptInput):
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt is empty")
 
-    image = pipe(
-        prompt=prompt,
-        num_inference_steps=50,
-        guidance_scale=5.5,
-    ).images[0]
+    try:
+        print(f"🎨 Generating image for prompt: {prompt}")
+        image = pipe(prompt=prompt, num_inference_steps=50, guidance_scale=5.5).images[0]
+    except Exception as e:
+        print(f"❌ Image generation failed: {e}")
+        raise HTTPException(status_code=500, detail="Image generation failed")
 
     filename = f"{uuid4().hex}.png"
     filepath = os.path.join(OUTPUT_DIR, filename)
-    image.save(filepath)
+
+    try:
+        image.save(filepath)
+        print(f"✅ Image saved at: {filepath}")
+    except Exception as e:
+        print(f"❌ Failed to save image: {e}")
+        raise HTTPException(status_code=500, detail="Image save failed")
+
+    # Optional: confirm file saved
+    if not os.path.exists(filepath):
+        print(f"❌ File not found immediately after saving: {filepath}")
+        raise HTTPException(status_code=500, detail="Image file not found")
+
+    # Add slight delay to avoid frontend race condition
+    time.sleep(0.4)
 
     return {"image_url": f"https://api.wildmindai.com/images/{filename}"}
 
