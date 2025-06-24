@@ -81,4 +81,4 @@ async def generate_image(request: Request, data: PromptInput):
     filepath = os.path.join(OUTPUT_DIR, filename)
     image.save(filepath)
 
-    return {"image_url": f"https://api.wildmindai.com/images/{filename}"}
+    return {"image_url": f"https://api.wildmindai.com/medium/{filename}"}
