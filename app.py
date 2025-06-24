@@ -10,7 +10,10 @@ import os
 # === CONFIG ===
 model_id = "stabilityai/stable-diffusion-3.5-medium"
 API_KEY = "wildmind_5879fcd4a8b94743b3a7c8c1a1b4"
-OUTPUT_DIR = "generated"
+
+# Use absolute path for image folder
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_DIR = os.path.join(BASE_DIR, "generated")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # === LOAD MODEL (Stable Medium with NF4 Quantization) ===
@@ -46,7 +49,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve static images
+# Serve static images from the generated folder
 app.mount("/images", StaticFiles(directory=OUTPUT_DIR), name="images")
 
 # === Request Schema ===
@@ -73,5 +76,7 @@ async def generate_medium(request: Request, body: PromptRequest):
     filename = f"{uuid4().hex}.png"
     filepath = os.path.join(OUTPUT_DIR, filename)
     image.save(filepath)
+
+    print("✅ Image saved to:", filepath)
 
     return {"image_url": f"https://api.wildmindai.com/images/{filename}"}
