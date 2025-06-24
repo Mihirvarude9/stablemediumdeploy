@@ -43,7 +43,7 @@ print("✅ SD 3.5 Medium ready!")
 # === FastAPI App ===
 app = FastAPI()
 
-# Enable CORS for frontend
+# Enable CORS for frontend domain
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://www.wildmindai.com"],
@@ -59,9 +59,8 @@ app.mount("/images", StaticFiles(directory=OUTPUT_DIR), name="images")
 class PromptInput(BaseModel):
     prompt: str
 
-# === /generate endpoint ===
-@app.post("/generate")
-async def generate_image(request: Request, data: PromptInput):
+# === Generation Logic ===
+async def generate_and_respond(request: Request, data: PromptInput):
     # API key check
     api_key = request.headers.get("x-api-key")
     if api_key != API_KEY:
@@ -81,4 +80,14 @@ async def generate_image(request: Request, data: PromptInput):
     filepath = os.path.join(OUTPUT_DIR, filename)
     image.save(filepath)
 
-    return {"image_url": f"https://api.wildmindai.com/medium/{filename}"}
+    return {"image_url": f"https://api.wildmindai.com/images/{filename}"}
+
+# === /generate endpoint ===
+@app.post("/generate")
+async def generate_image(request: Request, data: PromptInput):
+    return await generate_and_respond(request, data)
+
+# === /medium endpoint (alias) ===
+@app.post("/medium")
+async def generate_medium(request: Request, data: PromptInput):
+    return await generate_and_respond(request, data)
