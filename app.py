@@ -10,7 +10,7 @@ import time
 
 # === CONFIG ===
 API_KEY = "wildmind_5879fcd4a8b94743b3a7c8c1a1b4"
-OUTPUT_DIR = "generated"
+OUTPUT_DIR = os.path.abspath("generated")  # ✅ Make path absolute
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 model_id = "stabilityai/stable-diffusion-3.5-medium"
 
@@ -36,9 +36,7 @@ pipe = StableDiffusion3Pipeline.from_pretrained(
     torch_dtype=torch.float16,
 )
 
-# If you're low on VRAM, keep this. Otherwise comment it out.
-# pipe.enable_model_cpu_offload()
-
+# pipe.enable_model_cpu_offload()  # Optional, comment out if not needed
 pipe.to("cuda")
 print("✅ SD 3.5 Medium ready!")
 
@@ -54,7 +52,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve static images from local directory
+# Serve static images from the absolute output directory
 app.mount("/images", StaticFiles(directory=OUTPUT_DIR), name="images")
 
 # Request body schema
@@ -89,13 +87,11 @@ async def generate_and_respond(request: Request, data: PromptInput):
         print(f"❌ Failed to save image: {e}")
         raise HTTPException(status_code=500, detail="Image save failed")
 
-    # Optional: confirm file saved
     if not os.path.exists(filepath):
         print(f"❌ File not found immediately after saving: {filepath}")
         raise HTTPException(status_code=500, detail="Image file not found")
 
-    # Add slight delay to avoid frontend race condition
-    time.sleep(0.4)
+    time.sleep(0.4)  # prevent frontend race condition
 
     return {"image_url": f"https://api.wildmindai.com/images/{filename}"}
 
