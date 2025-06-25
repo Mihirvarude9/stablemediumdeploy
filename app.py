@@ -74,7 +74,7 @@ async def generate_medium(request: Request, body: PromptRequest):
     ).images[0]
 
     filename = f"{uuid4().hex}.png"
-    # filepath = os.path.join(OUTPUT_DIR, filename)
+    filepath = os.path.join(OUTPUT_DIR, filename)
     # image.save(filepath)
 
     # print("✅ Saved image:", filepath)
