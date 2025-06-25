@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from diffusers import StableDiffusionXLPipeline
 
 # ───────────────────────── CONFIG ──────────────────────────
-MODEL_ID = "stabilityai/stable-diffusion-medium-base-1.0"
+MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
 API_KEY  = "wildmind_5879fcd4a8b94743b3a7c8c1a1b4"
 
 BASE_DIR   = os.path.dirname(__file__)
@@ -43,8 +43,8 @@ app.add_middleware(
     allow_headers=["Content-Type", "x-api-key", "Accept"],
 )
 
-# serve at  https://api.wildmindai.com/medium/images/<file>.png
-app.mount("/medium/images", StaticFiles(directory=OUTPUT_DIR), name="medium-images")
+# serve at  https://api.wildmindai.com/xl/images/<file>.png
+app.mount("/xl/images", StaticFiles(directory=OUTPUT_DIR), name="xl-images")
 
 class PromptRequest(BaseModel):
     prompt: str
@@ -53,7 +53,7 @@ class PromptRequest(BaseModel):
     height: int = 1024      # SDXL defaults
     width:  int = 1024
 
-@app.post("/medium")
+@app.post("/xl")
 async def generate_xl(request: Request, body: PromptRequest):
     if request.headers.get("x-api-key") != API_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
@@ -76,7 +76,7 @@ async def generate_xl(request: Request, body: PromptRequest):
     print("🖼️  saved", fpath)
 
     return JSONResponse(
-        {"image_url": f"https://api.wildmindai.com/medium/images/{fname}"}
+        {"image_url": f"https://api.wildmindai.com/xl/images/{fname}"}
     )
 
 @app.get("/health")
