@@ -17,12 +17,15 @@ BASE_DIR   = os.path.dirname(__file__)
 OUTPUT_DIR = os.path.join(BASE_DIR, "generated_flux")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+ROUTE_PREFIX = "/medium"                    # <── CHANGE HERE once only
+IMAGE_ROUTE  = f"{ROUTE_PREFIX}/images"
+
 # ───────── FastAPI ────────────────────────────────────────────
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[                 # ← you can add more if needed
+    allow_origins=[
         "https://www.wildmindai.com",
         "https://api.wildmindai.com",
     ],
@@ -31,8 +34,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-#   Images will be served at   https://api.wildmindai.com/flux/images/<file>
-app.mount("/flux/images", StaticFiles(directory=OUTPUT_DIR), name="flux-images")
+# Serve files at  https://api.wildmindai.com/medium/images/<file>.png
+app.mount(IMAGE_ROUTE, StaticFiles(directory=OUTPUT_DIR), name="medium-images")
 
 # ───────── Model ──────────────────────────────────────────────
 print("🔄 Loading FLUX-Dev …")
@@ -41,7 +44,7 @@ pipe.to("cuda")
 pipe.enable_model_cpu_offload()
 print("✅ FLUX-Dev ready!")
 
-# ───────── Pydantic schema ────────────────────────────────────
+# ───────── Schema ─────────────────────────────────────────────
 class PromptRequest(BaseModel):
     prompt: str
     height:   int = 512
@@ -51,13 +54,13 @@ class PromptRequest(BaseModel):
     seed:     int = 42
 
 # ───────── Routes ─────────────────────────────────────────────
-@app.get("/flux/ping")
+@app.get(f"{ROUTE_PREFIX}/ping")
 def ping():
     return {"status": "ok"}
 
-@app.post("/medium")
-async def generate_flux(request: Request, body: PromptRequest):
-    # ----- API key check -----
+@app.post(ROUTE_PREFIX)
+async def generate(request: Request, body: PromptRequest):
+    # ---------- auth ----------
     if request.headers.get("x-api-key") != API_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
@@ -65,7 +68,7 @@ async def generate_flux(request: Request, body: PromptRequest):
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt is empty")
 
-    # ----- Generation --------
+    # ---------- generate -------
     image = pipe(
         prompt,
         height=body.height,
@@ -75,11 +78,12 @@ async def generate_flux(request: Request, body: PromptRequest):
         generator=torch.manual_seed(body.seed),
     ).images[0]
 
-    # ----- Save & respond ----
+    # ---------- save & reply ---
     filename = f"{uuid4().hex}.png"
     filepath = os.path.join(OUTPUT_DIR, filename)
     image.save(filepath)
     print("🖼️  saved", filepath)
 
-    #                       vvvvvvvvvvvvvvvvvvvvvvvvvvv  <- FIX
-    return JSONResponse({"image_url": f"https://api.wildmindai.com/medium/images/{filename}"})
+    return JSONResponse(
+        {"image_url": f"https://api.wildmindai.com{IMAGE_ROUTE}/{filename}"}
+    )
