@@ -74,10 +74,10 @@ async def generate_medium(request: Request, body: PromptRequest):
     ).images[0]
 
     filename = f"{uuid4().hex}.png"
-    filepath = os.path.join(OUTPUT_DIR, filename)
-    image.save(filepath)
+    # filepath = os.path.join(OUTPUT_DIR, filename)
+    # image.save(filepath)
 
-    print("✅ Saved image:", filepath)
+    # print("✅ Saved image:", filepath)
 
     # ✅ Return image URL that matches mounted path
     return {"image_url": f"https://api.wildmindai.com/medium/images/{filename}"}
