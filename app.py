@@ -1,89 +1,83 @@
-import os
-from uuid import uuid4
-
-import torch
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from diffusers import FluxPipeline
+from uuid import uuid4
+from diffusers import BitsAndBytesConfig, SD3Transformer2DModel, StableDiffusion3Pipeline
+import torch
+import os
 
-# ───────── CONFIG ─────────────────────────────────────────────
-API_KEY   = "wildmind_5879fcd4a8b94743b3a7c8c1a1b4"
-MODEL_ID  = "black-forest-labs/FLUX.1-dev"
+# === CONFIG ===
+model_id = "stabilityai/stable-diffusion-3.5-medium"
+API_KEY = "wildmind_5879fcd4a8b94743b3a7c8c1a1b4"
 
-BASE_DIR   = os.path.dirname(__file__)
-OUTPUT_DIR = os.path.join(BASE_DIR, "generated_flux")
+# Absolute path for consistent behavior
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_DIR = os.path.join(BASE_DIR, "generated")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-ROUTE_PREFIX = "/medium"                    # <── CHANGE HERE once only
-IMAGE_ROUTE  = f"{ROUTE_PREFIX}/images"
+# === LOAD MODEL (Stable Medium with NF4 Quantization) ===
+nf4_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=torch.float16
+)
 
-# ───────── FastAPI ────────────────────────────────────────────
+model_nf4 = SD3Transformer2DModel.from_pretrained(
+    model_id,
+    subfolder="transformer",
+    quantization_config=nf4_config,
+    torch_dtype=torch.float16
+)
+
+pipeline = StableDiffusion3Pipeline.from_pretrained(
+    model_id,
+    transformer=model_nf4,
+    torch_dtype=torch.float16
+)
+pipeline.enable_model_cpu_offload()
+
+# === FASTAPI SETUP ===
 app = FastAPI()
 
+# Allow frontend CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://www.wildmindai.com",
-        "https://api.wildmindai.com",
-    ],
+    allow_origins=["https://www.wildmindai.com"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Serve files at  https://api.wildmindai.com/medium/images/<file>.png
-app.mount(IMAGE_ROUTE, StaticFiles(directory=OUTPUT_DIR), name="medium-images")
+# ✅ Serve static images at /medium/images
+app.mount("/medium/images", StaticFiles(directory=OUTPUT_DIR), name="medium-images")
 
-# ───────── Model ──────────────────────────────────────────────
-print("🔄 Loading FLUX-Dev …")
-pipe = FluxPipeline.from_pretrained(MODEL_ID, torch_dtype=torch.float16)
-pipe.to("cuda")
-pipe.enable_model_cpu_offload()
-print("✅ FLUX-Dev ready!")
-
-# ───────── Schema ─────────────────────────────────────────────
+# === Request Schema ===
 class PromptRequest(BaseModel):
     prompt: str
-    height:   int = 512
-    width:    int = 512
-    steps:    int = 50
-    guidance: float = 6.5
-    seed:     int = 42
 
-# ───────── Routes ─────────────────────────────────────────────
-@app.get(f"{ROUTE_PREFIX}/ping")
-def ping():
-    return {"status": "ok"}
-
-@app.post(ROUTE_PREFIX)
-async def generate(request: Request, body: PromptRequest):
-    # ---------- auth ----------
-    if request.headers.get("x-api-key") != API_KEY:
+# === /medium endpoint ===
+@app.post("/medium")
+async def generate_medium(request: Request, body: PromptRequest):
+    api_key = request.headers.get("x-api-key")
+    if api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
     prompt = body.prompt.strip()
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt is empty")
 
-    # ---------- generate -------
-    image = pipe(
-        prompt,
-        height=body.height,
-        width=body.width,
-        num_inference_steps=body.steps,
-        guidance_scale=body.guidance,
-        generator=torch.manual_seed(body.seed),
+    image = pipeline(
+        prompt=prompt,
+        num_inference_steps=60,
+        guidance_scale=5.5,
     ).images[0]
 
-    # ---------- save & reply ---
     filename = f"{uuid4().hex}.png"
     filepath = os.path.join(OUTPUT_DIR, filename)
     image.save(filepath)
-    print("🖼️  saved", filepath)
 
-    return JSONResponse(
-        {"image_url": f"https://api.wildmindai.com{IMAGE_ROUTE}/{filename}"}
-    )
+    print("✅ Saved image:", filepath)
+
+    # ✅ Return image URL that matches mounted path
+    return {"image_url": f"https://api.wildmindai.com/medium/images/{filename}"}
